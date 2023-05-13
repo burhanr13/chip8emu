@@ -45,8 +45,8 @@ Uint8 reverse_byte(Uint8 b) {
 void run_instruction(struct chip8* chip8) {
     Uint16 instruction =
         (chip8->ram[chip8->pc] << 8) | chip8->ram[chip8->pc + 1];
+    fprintf(LOGFILE, "pc: %04x instr %04x: ", chip8->pc, instruction);
     chip8->pc += 2;
-    fprintf(LOGFILE, "instr %04x: ", instruction);
 
     Uint8 opcode = instruction >> 12;
     Uint16 addr = instruction & 0x0fff;
@@ -200,15 +200,15 @@ void run_instruction(struct chip8* chip8) {
             switch (num) {
                 case 0x07: // get delay timer
                     chip8->reg[rx] = chip8->delay;
-                    fprintf(LOGFILE, "stored delay timer in reg %x\n", rx);
+                    fprintf(LOGFILE, "stored delay timer (%x) in reg %x\n", chip8->reg[rx], rx);
                     break;
                 case 0x15: // set delay timer
                     chip8->delay = chip8->reg[rx];
-                    fprintf(LOGFILE, "set delay timer to reg %x\n", rx);
+                    fprintf(LOGFILE, "set delay timer to %x\n", chip8->reg[rx]);
                     break;
                 case 0x18: // set sound timer
                     chip8->sound = chip8->reg[rx];
-                    fprintf(LOGFILE, "set sound timer to reg %x\n", rx);
+                    fprintf(LOGFILE, "set sound timer to %x\n", chip8->reg[rx]);
                     break;
                 case 0x1e: { // add to index
                     Uint16 bef = chip8->ind;

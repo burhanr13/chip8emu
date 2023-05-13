@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
                 for (int i = 0; i < 16; i++) {
                     if (e.key.keysym.scancode == keys[i]) {
                         chip8->keypad |= (1 << i);
+                        break;
                     }
                 }
             }
@@ -76,6 +77,7 @@ int main(int argc, char** argv) {
                 for (int i = 0; i < 16; i++) {
                     if (e.key.keysym.scancode == keys[i]) {
                         chip8->keypad &= ~(1 << i);
+                        break;
                     }
                 }
             }
@@ -88,8 +90,8 @@ int main(int argc, char** argv) {
         }
         cur_time = clock();
         if (cur_time - last_frame_time >= (CLOCKS_PER_SEC / FPS)) {
-            if (chip8->delay != 0) chip8->delay--;
-            if (chip8->sound != 0) chip8->sound--;
+            if (chip8->delay) chip8->delay--;
+            if (chip8->sound) chip8->sound--;
             render_display(chip8, renderer);
             last_frame_time = cur_time;
         }
