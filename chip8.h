@@ -13,6 +13,8 @@
 
 #define PIXEL_SIZE 10
 
+#define LOGFILE stderr
+
 struct chip8 {
     Uint8 ram[RAM_SIZE];
     Uint64 display[DISPLAY_ROWS];
