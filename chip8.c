@@ -1,17 +1,33 @@
 #include "chip8.h"
 
+#include <SDL2/SDL.h>
+
 #include <stdio.h>
 #include <string.h>
+
+extern FILE* logfile;
 
 struct chip8* init_chip8(char* prog_file) {
     struct chip8* chip8 = calloc(1, sizeof(struct chip8));
     chip8->pc = PROG_OFFSET;
     FILE* prog = fopen(prog_file, "rb");
-    if (!prog) return NULL;
+    if (!prog) {
+        free(chip8);
+        return NULL;
+    }
     fseek(prog, 0, SEEK_END);
     long size = ftell(prog);
+    if (size > RAM_SIZE - PROG_OFFSET) {
+        free(chip8);
+        fclose(prog);
+        return NULL;
+    }
     fseek(prog, 0, SEEK_SET);
-    fread(chip8->ram + PROG_OFFSET, 1, size, prog);
+    if (fread(chip8->ram + PROG_OFFSET, 1, size, prog) < 1) {
+        fclose(prog);
+        free(chip8);
+        return NULL;
+    }
     fclose(prog);
     static Uint8 font[] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -45,7 +61,7 @@ Uint8 reverse_byte(Uint8 b) {
 void run_instruction(struct chip8* chip8) {
     Uint16 instruction =
         (chip8->ram[chip8->pc] << 8) | chip8->ram[chip8->pc + 1];
-    fprintf(LOGFILE, "pc: %04x instr %04x: ", chip8->pc, instruction);
+    fprintf(logfile, "pc: %04x instr %04x: ", chip8->pc, instruction);
     chip8->pc += 2;
 
     Uint8 opcode = instruction >> 12;
@@ -58,112 +74,114 @@ void run_instruction(struct chip8* chip8) {
         case 0x0:
             if (instruction == 0x00e0) { // clear screen
                 memset(chip8->display, 0, DISPLAY_ROWS * DISPLAY_COLS / 8);
-                fprintf(LOGFILE, "clear screen\n");
+                fprintf(logfile, "clear screen\n");
             }
             if (instruction == 0x00ee) { // return
-                chip8->sp = (chip8->sp - 1) & STACK_SIZE;
+                chip8->sp = (chip8->sp - 1) & (STACK_SIZE - 1);
                 chip8->pc = chip8->stack[chip8->sp];
-                fprintf(LOGFILE, "return to %x\n", chip8->stack[chip8->sp]);
+                fprintf(logfile, "return to %x, sp = %x\n", chip8->pc,
+                        chip8->sp);
             }
             break;
         case 0x1: // jump
             chip8->pc = addr;
-            fprintf(LOGFILE, "jump to %x\n", addr);
+            fprintf(logfile, "jump to %x\n", addr);
             break;
         case 0x2: // call
             chip8->stack[chip8->sp] = chip8->pc;
             chip8->sp = (chip8->sp + 1) & (STACK_SIZE - 1);
             chip8->pc = addr;
-            fprintf(LOGFILE, "called subroutine at address %x\n", addr);
+            fprintf(logfile, "call subroutine at %x, sp = %x\n", addr,
+                    chip8->sp);
             break;
         case 0x3: // skip if equal
             if (chip8->reg[rx] == num) chip8->pc += 2;
-            fprintf(LOGFILE, "skip if equal: %x %x\n", chip8->reg[rx], num);
+            fprintf(logfile, "skip if equal: %x %x\n", chip8->reg[rx], num);
             break;
         case 0x4: // skip if not equal
             if (chip8->reg[rx] != num) chip8->pc += 2;
-            fprintf(LOGFILE, "skip if not equal: %x %x\n", chip8->reg[rx], num);
+            fprintf(logfile, "skip if not equal: %x %x\n", chip8->reg[rx], num);
             break;
         case 0x5: // skip if equal (register)
             if (chip8->reg[rx] == chip8->reg[ry]) chip8->pc += 2;
-            fprintf(LOGFILE, "skip if equal: %x %x\n", chip8->reg[rx],
-                    chip8->reg[ry]);
+            fprintf(logfile, "skip if equal (registers): %x %x\n",
+                    chip8->reg[rx], chip8->reg[ry]);
             break;
         case 0x6: // set reg
             chip8->reg[rx] = num;
-            fprintf(LOGFILE, "set reg %x to %x\n", rx, num);
+            fprintf(logfile, "set reg %x to %x\n", rx, num);
             break;
         case 0x7: // add to reg
             chip8->reg[rx] += num;
-            fprintf(LOGFILE, "add %x to reg %x\n", num, rx);
+            fprintf(logfile, "add %x to reg %x\n", num, rx);
             break;
         case 0x8: // alu
             switch (h) {
                 case 0x0:
                     chip8->reg[rx] = chip8->reg[ry];
-                    fprintf(LOGFILE, "set reg %x to reg %x\n", rx, ry);
+                    fprintf(logfile, "set reg %x to reg %x\n", rx, ry);
                     break;
                 case 0x1:
                     chip8->reg[rx] |= chip8->reg[ry];
-                    fprintf(LOGFILE, "or reg %x to reg %x\n", ry, rx);
+                    fprintf(logfile, "or reg %x to reg %x\n", ry, rx);
                     break;
                 case 0x2:
                     chip8->reg[rx] &= chip8->reg[ry];
-                    fprintf(LOGFILE, "and reg %x to reg %x\n", ry, rx);
+                    fprintf(logfile, "and reg %x to reg %x\n", ry, rx);
                     break;
                 case 0x3:
                     chip8->reg[rx] ^= chip8->reg[ry];
-                    fprintf(LOGFILE, "xor reg %x to reg %x\n", ry, rx);
+                    fprintf(logfile, "xor reg %x to reg %x\n", ry, rx);
                     break;
                 case 0x4: {
                     Uint8 bef = chip8->reg[rx];
                     chip8->reg[rx] += chip8->reg[ry];
                     chip8->reg[0xf] = (chip8->reg[rx] < bef) ? 1 : 0;
-                    fprintf(LOGFILE, "add reg %x to reg %x\n", ry, rx);
+                    fprintf(logfile, "add reg %x to reg %x\n", ry, rx);
                     break;
                 }
                 case 0x5: {
                     Uint8 bef = chip8->reg[rx];
                     chip8->reg[rx] -= chip8->reg[ry];
                     chip8->reg[0xf] = (chip8->reg[rx] < bef) ? 1 : 0;
-                    fprintf(LOGFILE, "sub reg %x from reg %x\n", ry, rx);
+                    fprintf(logfile, "sub reg %x from reg %x\n", ry, rx);
                     break;
                 }
                 case 0x6:
                     chip8->reg[0xf] = chip8->reg[rx] & 1;
                     chip8->reg[rx] >>= 1;
-                    fprintf(LOGFILE, "right shift reg %x\n", rx);
+                    fprintf(logfile, "right shift reg %x\n", rx);
                     break;
                 case 0x7:
                     chip8->reg[rx] = chip8->reg[ry] - chip8->reg[rx];
                     chip8->reg[0xf] = (chip8->reg[rx] < chip8->reg[ry]) ? 1 : 0;
-                    fprintf(LOGFILE, "reverse sub reg %x from reg %x\n", ry,
+                    fprintf(logfile, "reverse sub reg %x from reg %x\n", ry,
                             rx);
                     break;
                 case 0xe:
                     chip8->reg[0xf] = (chip8->reg[rx] & (1 << 7)) ? 1 : 0;
                     chip8->reg[rx] <<= 1;
-                    fprintf(LOGFILE, "left shift reg %x\n", rx);
+                    fprintf(logfile, "left shift reg %x\n", rx);
                     break;
             }
             break;
         case 0x9: // skip if not equal (register)
             if (chip8->reg[rx] != chip8->reg[ry]) chip8->pc += 2;
-            fprintf(LOGFILE, "skip if not equal: %x %x\n", chip8->reg[rx],
-                    chip8->reg[ry]);
+            fprintf(logfile, "skip if not equal (registers): %x %x\n",
+                    chip8->reg[rx], chip8->reg[ry]);
             break;
         case 0xa: // set index
             chip8->ind = addr;
-            fprintf(LOGFILE, "set ind to %x\n", addr);
+            fprintf(logfile, "set ind to %x\n", addr);
             break;
         case 0xb: // jump with offset
             chip8->pc = (addr + chip8->reg[0x0]) & (RAM_SIZE - 1);
-            fprintf(LOGFILE, "jump to %x with offset %x\n", addr,
+            fprintf(logfile, "jump to %x with offset %x\n", addr,
                     chip8->reg[0x0]);
             break;
         case 0xc: // random
             chip8->reg[rx] = rand() & num;
-            fprintf(LOGFILE, "generate random in reg %x\n", rx);
+            fprintf(logfile, "generate random in reg %x\n", rx);
             break;
         case 0xd: // display
             chip8->reg[0xf] = 0;
@@ -177,7 +195,7 @@ void run_instruction(struct chip8* chip8) {
                 if (chip8->display[y + i] & sprite) chip8->reg[0xf] = 1;
                 chip8->display[y + i] ^= sprite;
             }
-            fprintf(LOGFILE,
+            fprintf(logfile,
                     "drew sprite at address %x and size %x to x: %x y: %x\n",
                     chip8->ind, h, x, y);
             break;
@@ -186,13 +204,13 @@ void run_instruction(struct chip8* chip8) {
                 if (chip8->keypad & (1 << chip8->reg[rx])) {
                     chip8->pc += 2;
                 }
-                fprintf(LOGFILE, "skipped if key %x pressed\n", chip8->reg[rx]);
+                fprintf(logfile, "skip if key %x pressed\n", chip8->reg[rx]);
             }
             if (num == 0xa1) { // skip if key not pressed
                 if (!(chip8->keypad & (1 << chip8->reg[rx]))) {
                     chip8->pc += 2;
                 }
-                fprintf(LOGFILE, "skipped if key %x not pressed\n",
+                fprintf(logfile, "skip if key %x not pressed\n",
                         chip8->reg[rx]);
             }
             break;
@@ -200,21 +218,22 @@ void run_instruction(struct chip8* chip8) {
             switch (num) {
                 case 0x07: // get delay timer
                     chip8->reg[rx] = chip8->delay;
-                    fprintf(LOGFILE, "stored delay timer (%x) in reg %x\n", chip8->reg[rx], rx);
+                    fprintf(logfile, "store delay timer (%x) in reg %x\n",
+                            chip8->reg[rx], rx);
                     break;
                 case 0x15: // set delay timer
                     chip8->delay = chip8->reg[rx];
-                    fprintf(LOGFILE, "set delay timer to %x\n", chip8->reg[rx]);
+                    fprintf(logfile, "set delay timer to %x\n", chip8->reg[rx]);
                     break;
                 case 0x18: // set sound timer
                     chip8->sound = chip8->reg[rx];
-                    fprintf(LOGFILE, "set sound timer to %x\n", chip8->reg[rx]);
+                    fprintf(logfile, "set sound timer to %x\n", chip8->reg[rx]);
                     break;
                 case 0x1e: { // add to index
                     Uint16 bef = chip8->ind;
                     chip8->ind = (chip8->ind + chip8->reg[rx]) & (RAM_SIZE - 1);
                     chip8->reg[0xf] = (chip8->ind < bef) ? 1 : 0;
-                    fprintf(LOGFILE, "add reg %x to index\n", rx);
+                    fprintf(logfile, "add reg %x to index\n", rx);
                     break;
                 }
                 case 0x0a: // wait for keypress
@@ -227,12 +246,12 @@ void run_instruction(struct chip8* chip8) {
                     } else {
                         chip8->pc -= 2;
                     }
-                    fprintf(LOGFILE, "wait for keypress and store in reg %x\n",
+                    fprintf(logfile, "wait for keypress and store in reg %x\n",
                             rx);
                     break;
                 case 0x29: // font character
                     chip8->ind = FONT_OFFSET + (chip8->reg[rx] & 0xf);
-                    fprintf(LOGFILE, "set index to font character %x\n",
+                    fprintf(logfile, "set index to font character %x\n",
                             chip8->reg[rx] & 0xf);
                     break;
                 case 0x33: // bcd conversion
@@ -241,20 +260,20 @@ void run_instruction(struct chip8* chip8) {
                         chip8->reg[rx] / 10 % 10;
                     chip8->ram[(chip8->ind + 2) & (RAM_SIZE - 1)] =
                         chip8->reg[rx] % 10;
-                    fprintf(LOGFILE, "stored bcd of %x at ind\n",
+                    fprintf(logfile, "stored bcd of %x at ind\n",
                             chip8->reg[rx]);
                     break;
                 case 0x55: // store to memory
                     for (int i = 0; chip8->ind + i < RAM_SIZE && i <= rx; i++) {
                         chip8->ram[chip8->ind + i] = chip8->reg[i];
                     }
-                    fprintf(LOGFILE, "stored regs 0 to %x at ind\n", rx);
+                    fprintf(logfile, "stored regs 0 to %x at ind\n", rx);
                     break;
                 case 0x65: // load from memory
                     for (int i = 0; chip8->ind + i < RAM_SIZE && i <= rx; i++) {
                         chip8->reg[i] = chip8->ram[chip8->ind + i];
                     }
-                    fprintf(LOGFILE, "loaded regs 0 to %x from ind\n", rx);
+                    fprintf(logfile, "loaded regs 0 to %x from ind\n", rx);
                     break;
             }
             break;
@@ -262,17 +281,16 @@ void run_instruction(struct chip8* chip8) {
 }
 
 void render_display(struct chip8* chip8, SDL_Renderer* renderer) {
+    SDL_SetRenderDrawColor(renderer, 20, 40, 100, 0);
     SDL_RenderClear(renderer);
+    SDL_SetRenderDrawColor(renderer, 255, 150, 100, 0);
     for (int y = 0; y < DISPLAY_ROWS; y++) {
         for (int x = 0; x < DISPLAY_COLS; x++) {
             if (chip8->display[y] & (1UL << x)) {
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
-            } else {
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+                SDL_RenderFillRect(renderer,
+                                   &(SDL_Rect){x * PIXEL_SIZE, y * PIXEL_SIZE,
+                                               PIXEL_SIZE, PIXEL_SIZE});
             }
-            SDL_RenderFillRect(renderer,
-                               &(SDL_Rect){x * PIXEL_SIZE, y * PIXEL_SIZE,
-                                           PIXEL_SIZE, PIXEL_SIZE});
         }
     }
     SDL_RenderPresent(renderer);

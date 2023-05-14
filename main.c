@@ -9,11 +9,13 @@
 #define FPS 60
 #define IPS 700
 
+FILE* logfile;
+
 void audio_clbk(void* data, Uint8* stream, int len) {
     struct chip8* chip8 = data;
     if (chip8->sound) {
         for (int i = 0; i < len; i++) {
-            stream[i] = i % 0x10;
+            stream[i] = i % 100;
         }
     } else {
         memset(stream, 0, len);
@@ -41,6 +43,8 @@ int main(int argc, char** argv) {
         printf("error opening file\n");
         return -1;
     }
+
+    logfile = fopen("log.txt", "w");
 
     clock_t last_frame_time = clock();
     clock_t last_instr_time = clock();
@@ -96,6 +100,8 @@ int main(int argc, char** argv) {
             last_frame_time = cur_time;
         }
     }
+
+    fclose(logfile);
 
     SDL_CloseAudioDevice(audio_id);
 
