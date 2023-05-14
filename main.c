@@ -15,7 +15,9 @@ void audio_clbk(void* data, Uint8* stream, int len) {
     struct chip8* chip8 = data;
     if (chip8->sound) {
         for (int i = 0; i < len; i++) {
-            stream[i] = i % 100;
+            int x = i % 100;
+            if (x > 50) x = 100 - x;
+            stream[i] = x;
         }
     } else {
         memset(stream, 0, len);
@@ -49,10 +51,10 @@ int main(int argc, char** argv) {
     clock_t last_frame_time = clock();
     clock_t last_instr_time = clock();
 
-    SDL_AudioSpec audio = {.freq = 44000,
+    SDL_AudioSpec audio = {.freq = 42000,
                            .format = AUDIO_U8,
                            .channels = 1,
-                           .samples = 44000 / FPS,
+                           .samples = 42000 / FPS,
                            .callback = audio_clbk,
                            .userdata = chip8};
     SDL_AudioDeviceID audio_id = SDL_OpenAudioDevice(NULL, 0, &audio, NULL, 0);
@@ -103,6 +105,7 @@ int main(int argc, char** argv) {
 
     fclose(logfile);
 
+    SDL_PauseAudioDevice(audio_id, 1);
     SDL_CloseAudioDevice(audio_id);
 
     free(chip8);

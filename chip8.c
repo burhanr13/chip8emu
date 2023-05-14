@@ -181,7 +181,7 @@ void run_instruction(struct chip8* chip8) {
             break;
         case 0xc: // random
             chip8->reg[rx] = rand() & num;
-            fprintf(logfile, "generate random in reg %x\n", rx);
+            fprintf(logfile, "generate random (%x) in reg %x\n", chip8->reg[rx], rx);
             break;
         case 0xd: // display
             chip8->reg[0xf] = 0;
