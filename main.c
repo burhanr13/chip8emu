@@ -68,27 +68,6 @@ int main(int argc, char** argv) {
 
     int running = 1;
     while (running) {
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) running = 0;
-            if (e.type == SDL_KEYDOWN) {
-                for (int i = 0; i < 16; i++) {
-                    if (e.key.keysym.scancode == keys[i]) {
-                        chip8->keypad |= (1 << i);
-                        break;
-                    }
-                }
-            }
-            if (e.type == SDL_KEYUP) {
-                for (int i = 0; i < 16; i++) {
-                    if (e.key.keysym.scancode == keys[i]) {
-                        chip8->keypad &= ~(1 << i);
-                        break;
-                    }
-                }
-            }
-        }
-
         clock_t cur_time = clock();
         if (cur_time - last_instr_time >= (CLOCKS_PER_SEC / IPS)) {
             run_instruction(chip8);
@@ -96,6 +75,26 @@ int main(int argc, char** argv) {
         }
         cur_time = clock();
         if (cur_time - last_frame_time >= (CLOCKS_PER_SEC / FPS)) {
+            SDL_Event e;
+            while (SDL_PollEvent(&e)) {
+                if (e.type == SDL_QUIT) running = 0;
+                if (e.type == SDL_KEYDOWN) {
+                    for (int i = 0; i < 16; i++) {
+                        if (e.key.keysym.scancode == keys[i]) {
+                            chip8->keypad |= (1 << i);
+                            break;
+                        }
+                    }
+                }
+                if (e.type == SDL_KEYUP) {
+                    for (int i = 0; i < 16; i++) {
+                        if (e.key.keysym.scancode == keys[i]) {
+                            chip8->keypad &= ~(1 << i);
+                            break;
+                        }
+                    }
+                }
+            }
             if (chip8->delay) chip8->delay--;
             if (chip8->sound) chip8->sound--;
             render_display(chip8, renderer);
